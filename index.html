@@ -70,8 +70,7 @@ aside{width:320px;background:var(--panel);border-left:1px solid var(--line);disp
 .handle{display:none}
 .ctrl{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
 .ctrl label{font-size:12px;color:var(--muted)}
-select,button,input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-height:36px}
-input{width:100%}
+select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-height:36px}
 button{cursor:pointer}
 .row{display:flex;gap:8px;align-items:center}
 .row select{flex:1;min-width:0}
@@ -88,8 +87,6 @@ button{cursor:pointer}
 .uf .mini i{display:block}
 .uf small{color:var(--muted);text-align:right}
 .status{padding:8px 14px;padding-bottom:max(8px,env(safe-area-inset-bottom));font-size:12px;color:var(--muted);border-top:1px solid var(--line);overflow-wrap:anywhere}
-.prog{height:2px;background:var(--line);margin-top:6px;border-radius:1px;overflow:hidden}
-.prog i{display:block;height:100%;width:0;background:var(--ink);opacity:.6}
 
 #info{position:absolute;left:12px;bottom:28px;z-index:500;background:var(--panel);border:1px solid var(--line);border-radius:10px;
   box-shadow:0 6px 20px rgba(0,0,0,.2);padding:10px 34px 10px 12px;font-size:13px;min-width:210px;max-width:calc(100% - 24px);display:none}
@@ -160,11 +157,8 @@ button{cursor:pointer}
   <div id="map"></div>
   <div id="info"><button class="x" id="infoX" aria-label="Fechar">×</button><div id="infoBody"></div></div>
   <aside id="panel">
-    <button class="handle" id="handle" aria-expanded="false"><span class="t">Estados e busca</span><span class="s" id="handleS"></span></button>
+    <button class="handle" id="handle" aria-expanded="false"><span class="t">Estados</span><span class="s" id="handleS"></span></button>
     <div class="ctrl">
-      <label for="busca">Buscar cidade</label>
-      <input id="busca" list="cidades" placeholder="Ex.: Campinas – SP" autocomplete="off" enterkeyhint="search">
-      <datalist id="cidades"></datalist>
       <label for="ufSel">Estado</label>
       <div class="row">
         <select id="ufSel"><option value="">Brasil inteiro</option></select>
@@ -172,13 +166,13 @@ button{cursor:pointer}
       </div>
     </div>
     <div class="legend">
-      % dos votos válidos no município
+      % dos votos válidos no estado
       <div class="scale" id="scale"></div>
       <div class="scale-l"><span>Lula 70%+</span><span>50%</span><span>Flávio 70%+</span></div>
       <div style="margin-top:6px"><span class="sw"></span>sem urnas apuradas</div>
     </div>
     <div id="ufs"></div>
-    <div class="status"><span id="status"></span><div class="prog"><i id="prog"></i></div></div>
+    <div class="status"><span id="status"></span></div>
   </aside>
 </main>
 
@@ -192,8 +186,6 @@ const E6 = 'e' + ELE.padStart(6, '0');
 const CARGO = 'c0001';
 const N_LULA = '13', N_FLAVIO = '22';
 const REFRESH_MS = 60_000;
-const CONCURRENCY = 6;
-const CACHE_KEY = 'apuracao-' + ELE;
 
 const UF_NAMES = {ac:'Acre',al:'Alagoas',am:'Amazonas',ap:'Amapá',ba:'Bahia',ce:'Ceará',df:'Distrito Federal',es:'Espírito Santo',go:'Goiás',ma:'Maranhão',mg:'Minas Gerais',ms:'Mato Grosso do Sul',mt:'Mato Grosso',pa:'Pará',pb:'Paraíba',pe:'Pernambuco',pi:'Piauí',pr:'Paraná',rj:'Rio de Janeiro',rn:'Rio Grande do Norte',ro:'Rondônia',rr:'Roraima',rs:'Rio Grande do Sul',sc:'Santa Catarina',se:'Sergipe',sp:'São Paulo',to:'Tocantins'};
 const IBGE_UF = {11:'ro',12:'ac',13:'am',14:'rr',15:'pa',16:'ap',17:'to',21:'ma',22:'pi',23:'ce',24:'rn',25:'pb',26:'pe',27:'al',28:'se',29:'ba',31:'mg',32:'es',33:'rj',35:'sp',41:'pr',42:'sc',43:'rs',50:'ms',51:'mt',52:'go',53:'df'};
@@ -243,87 +235,64 @@ function decode(packed){
 }
 
 // ---------- mapa ----------
-const map = L.map('map', {preferCanvas: true, zoomSnap: 0.25, minZoom: 3, tap: false}).setView([-14, -52], 4);
+const map = L.map('map', {zoomSnap: 0.25, minZoom: 3, tap: false}).setView([-14, -52], 4);
 map.attributionControl.setPrefix('').addAttribution('Dados: TSE · Malha: IBGE');
-const renderer = L.canvas({padding: 0.3, tolerance: touch ? 3 : 0});
 
-const byIbge = {};   // ibge -> {tse, uf, nm}
-let results = {};    // ibge -> {l, f, p}  (votos Lula, votos Flávio, fração de seções apuradas)
-let stamps = {};     // chave -> carimbo da última versão baixada (uf, mun)
-const layers = {};   // ibge -> layer
-const centers = {};  // ibge -> LatLng
+const ufResults = {};   // uf -> {l, f, p}  (votos Lula, votos Flávio, fração de seções apuradas)
+const layers = {};      // uf -> layer
 let selected = null;
 
-const STYLE_BASE = {fillOpacity: 1, color: hex('--map'), weight: 0.3};
-const munLayer = L.geoJSON(decode(GEO_MUN), {
-  renderer,
-  style: () => ({...STYLE_BASE, fillColor: C_NONE}),
+const ufLayer = L.geoJSON(decode(GEO_UF), {
+  style: () => ({fillOpacity: 1, fillColor: C_NONE, color: hex('--uf'), weight: 1.2}),
   onEachFeature(f, layer){
-    const c = f.properties.c;
-    layers[c] = layer;
+    const uf = IBGE_UF[f.properties.c];
+    layers[uf] = layer;
     if (!touch) {
-      layer.bindTooltip(() => cityHtml(c), {sticky: true, className: 'tt', direction: 'top', offset: [0, -8]});
-      layer.on('mouseover', () => highlight(c, true));
-      layer.on('mouseout', () => c !== selected && highlight(c, false));
+      layer.bindTooltip(() => ufHtml(uf), {sticky: true, className: 'tt', direction: 'top', offset: [0, -8]});
+      layer.on('mouseover', () => highlight(uf, true));
+      layer.on('mouseout', () => uf !== selected && highlight(uf, false));
     }
-    layer.on('click', () => showCity(c));
+    layer.on('click', () => showUf(uf));
   }
 }).addTo(map);
-const ufLayer = L.geoJSON(decode(GEO_UF), {
-  renderer, interactive: false, style: () => ({fill: false, color: hex('--uf'), weight: 1.4})
-}).addTo(map);
-const ufBounds = {};
-ufLayer.eachLayer(l => ufBounds[IBGE_UF[l.feature.properties.c]] = l.getBounds());
-for (const [c, l] of Object.entries(layers)) centers[c] = l.getBounds().getCenter();
-const fitBrasil = () => map.fitBounds(munLayer.getBounds(), {padding: [10, 10]});
+const fitBrasil = () => map.fitBounds(ufLayer.getBounds(), {padding: [10, 10]});
 fitBrasil();
 
-function highlight(c, on){
-  const l = layers[c]; if (!l) return;
-  l.setStyle(on ? {weight: 2, color: hex('--ink')} : {weight: 0.3, color: hex('--map')});
+function highlight(uf, on){
+  const l = layers[uf]; if (!l) return;
+  l.setStyle(on ? {weight: 3, color: hex('--ink')} : {weight: 1.2, color: hex('--uf')});
   if (on) l.bringToFront();
 }
-const cityName = c => byIbge[c] ? `${titleCase(byIbge[c].nm)} – ${byIbge[c].uf.toUpperCase()}` : c;
-function cityHtml(c){
-  const r = results[c];
-  if (!r || r.l + r.f === 0) return `<b>${cityName(c)}</b><br><span class="m">Nenhuma urna apurada ainda</span>`;
+function ufHtml(uf){
+  const r = ufResults[uf];
+  if (!r || r.l + r.f === 0) return `<b>${UF_NAMES[uf]}</b><br><span class="m">Nenhuma urna apurada ainda</span>`;
   const v = r.l + r.f;
-  return `<b>${cityName(c)}</b>
+  return `<b>${UF_NAMES[uf]}</b>
     ${touch ? `<div class="bar"><i class="bl" style="width:${r.l / v * 100}%"></i><i class="bf" style="width:${r.f / v * 100}%"></i></div>` : '<br>'}
     <span class="l">Lula ${fmtP(r.l / v)}</span> <span class="m">(${fmtN(r.l)})</span><br>
     <span class="f">Flávio ${fmtP(r.f / v)}</span> <span class="m">(${fmtN(r.f)})</span><br>
     <span class="m">${fmtP(r.p)} das urnas apuradas</span>`;
 }
-function showCity(c){
-  if (!touch && !selected) return;   // no desktop o tooltip já mostra; o cartão é só para busca
+function showUf(uf){
+  if (!touch) return;   // no desktop o tooltip já mostra
   if (selected) highlight(selected, false);
-  selected = c; highlight(c, true);
-  $('infoBody').innerHTML = cityHtml(c);
+  selected = uf; highlight(uf, true);
+  $('infoBody').innerHTML = ufHtml(uf);
   $('info').classList.add('on');
 }
-function hideCity(){
+function hideUf(){
   if (selected) highlight(selected, false);
   selected = null; $('info').classList.remove('on');
 }
-$('infoX').onclick = hideCity;
-const titleCase = s => s.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase())
-  .replace(/\b(D[aeo]s?|E)\b/g, w => w.toLowerCase());
+$('infoX').onclick = hideUf;
 
-// ---------- TSE: ritmo adaptativo (desacelera ao receber 429) ----------
-let gap = 40, nextAt = 0;   // ms entre requisições
-async function slot(){
-  const now = performance.now();
-  const wait = Math.max(0, nextAt - now);
-  nextAt = Math.max(now, nextAt) + gap;
-  if (wait) await sleep(wait);
-}
+// ---------- TSE ----------
 async function getJSON(url){
   for (let tentativa = 1; ; tentativa++) {
-    await slot();
     const r = await fetch(url);
-    if (r.ok) { gap = Math.max(30, gap * 0.97); return r.json(); }
-    if (r.status !== 429 || tentativa >= 5) throw new Error(r.status + ' ' + url);
-    gap = Math.min(2000, gap * 2);
+    if (r.ok) return r.json();
+    // 429 = limite de requisições do TSE: espera e tenta de novo
+    if (r.status !== 429 || tentativa >= 4) throw new Error(r.status + ' ' + url);
     await sleep(1500 * tentativa);
   }
 }
@@ -336,98 +305,28 @@ function parseResult(j){
   const s = j.s || {};
   return {l, f, p: num(s.st) / Math.max(1, num(s.ts)), hg: j.hg, dg: j.dg};
 }
-async function pool(items, fn){
-  let i = 0;
-  await Promise.all(Array.from({length: CONCURRENCY}, async () => {
-    while (i < items.length) { const it = items[i++]; try { await fn(it); } catch (e) { console.warn(e.message); } }
-  }));
-}
 
-// ---------- cache local (só acelera a reabertura; os dados sempre vêm do TSE) ----------
-function loadCache(){
-  try {
-    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-    if (c) { results = c.results || {}; stamps = c.stamps || {}; }
-  } catch { results = {}; stamps = {}; }
-}
-function saveCache(){
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify({results, stamps})); } catch {}
-}
-
-const ufResults = {};
 let loading = false, timer = null;
-
-async function loadConfig(){
-  const cfg = await getJSON(`${BASE}/${ELE}/config/mun-${E6}-cm.json`);
-  const opts = [];
-  for (const a of cfg.abr) for (const m of a.mu) if (m.cdi) {
-    byIbge[m.cdi] = {tse: m.cd, uf: a.cd, nm: m.nm};
-    opts.push(cityName(m.cdi));
-  }
-  $('cidades').innerHTML = opts.sort((a, b) => a.localeCompare(b)).map(o => `<option value="${o}">`).join('');
-  const sel = $('ufSel');
-  [...UFS].sort((a, b) => UF_NAMES[a].localeCompare(UF_NAMES[b])).forEach(uf => sel.add(new Option(UF_NAMES[uf], uf)));
-}
 
 async function refresh(){
   if (loading) return;
   loading = true; $('refresh').disabled = true;
   try {
-    const [brTot, brAb] = await Promise.all([
+    // 1 arquivo do Brasil + 27 dos estados por ciclo.
+    const [br, ...ufs] = await Promise.all([
       getJSON(`${BASE}/${ELE}/dados/br/br-${CARGO}-${E6}-u.json`),
-      getJSON(`${BASE}/${ELE}/dados/br/br-${E6}-ab.json`)
+      ...UFS.map(uf => getJSON(`${BASE}/${ELE}/dados/${uf}/${uf}-${CARGO}-${E6}-u.json`).catch(e => { console.warn(e.message); return null; }))
     ]);
-    renderTotals(parseResult(brTot));
-
-    // Só baixa os estados cujo carimbo mudou desde a última vez.
-    const ufStamp = {};
-    for (const a of brAb.abr || []) if (a.tpabr === 'uf') ufStamp[a.cdabr] = a.dt + a.ht + a.s?.st;
-    const ufsTodo = UFS.filter(uf => !ufResults[uf] || stamps['uf:' + uf] !== ufStamp[uf]);
-
-    const tse2ibge = {};
-    for (const [c, m] of Object.entries(byIbge)) tse2ibge[m.uf + m.tse] = c;
-    const todo = [], newUfStamps = {}, failedUfs = new Set();
-    await pool(ufsTodo, async uf => {
-      const changed = stamps['uf:' + uf] !== ufStamp[uf];
-      const [tot, ab] = await Promise.all([
-        getJSON(`${BASE}/${ELE}/dados/${uf}/${uf}-${CARGO}-${E6}-u.json`),
-        changed ? getJSON(`${BASE}/${ELE}/dados/${uf}/${uf}-${E6}-ab.json`) : null
-      ]);
-      ufResults[uf] = parseResult(tot);
-      if (!ab) return;
-      for (const a of ab.abr || []) {
-        if (a.tpabr !== 'mun' || num(a.s?.st) === 0) continue;
-        const ibge = tse2ibge[uf + a.cdabr];
-        const stamp = a.dt + a.ht + a.s.st;
-        if (ibge && stamps[ibge] !== stamp) todo.push({uf, tse: a.cdabr, ibge, stamp, te: num(a.e?.te)});
-      }
-      newUfStamps[uf] = ufStamp[uf];
+    renderTotals(parseResult(br));
+    let falhas = 0;
+    UFS.forEach((uf, i) => {
+      if (!ufs[i]) { falhas++; return; }
+      ufResults[uf] = parseResult(ufs[i]);
+      layers[uf].setStyle({fillColor: colorFor(ufResults[uf])});
     });
+    if (selected) $('infoBody').innerHTML = ufHtml(selected);
     renderUfs();
-
-    // Prioridade: estado escolhido > o que está na tela > cidades com mais eleitores.
-    const view = map.getBounds(), selUf = $('ufSel').value;
-    const score = t => (t.uf === selUf ? 2e9 : 0) + (view.contains(centers[t.ibge]) ? 1e9 : 0) + t.te;
-    todo.sort((a, b) => score(b) - score(a));
-
-    let done = 0;
-    progress(0, todo.length);
-    await pool(todo, async t => {
-      let r;
-      try { r = parseResult(await getJSON(`${BASE}/${ELE}/dados/${t.uf}/${t.uf}${t.tse}-${CARGO}-${E6}-u.json`)); }
-      catch (e) { failedUfs.add(t.uf); throw e; }
-      results[t.ibge] = {l: r.l, f: r.f, p: r.p};
-      stamps[t.ibge] = t.stamp;
-      layers[t.ibge]?.setStyle({fillColor: colorFor(results[t.ibge])});
-      if (t.ibge === selected) $('infoBody').innerHTML = cityHtml(t.ibge);
-      progress(++done, todo.length);
-      if (done % 300 === 0) saveCache();
-    });
-    // Estado com cidade que falhou fica sem carimbo novo, para ser revisto no próximo ciclo.
-    for (const [uf, s] of Object.entries(newUfStamps)) if (!failedUfs.has(uf)) stamps['uf:' + uf] = s;
-    saveCache();
-    const n = Object.values(results).filter(r => r.l + r.f > 0).length;
-    status(`${fmtN(n)} de ${fmtN(Object.keys(byIbge).length)} municípios com votos · atualiza a cada ${REFRESH_MS / 1000}s`);
+    status(falhas ? `${falhas} estado(s) não responderam; tentando de novo no próximo ciclo` : '');
   } catch (e) {
     console.error(e);
     status('Erro ao falar com o TSE (' + e.message.split(' ')[0] + '), tentando de novo no próximo ciclo');
@@ -458,46 +357,32 @@ function renderTotals(r){
 function renderUfs(){
   const sel = $('ufSel').value;
   const rows = Object.entries(ufResults).sort((a, b) => UF_NAMES[a[0]].localeCompare(UF_NAMES[b[0]]));
+  let lula = 0, flavio = 0;
   $('ufs').innerHTML = rows.map(([uf, r]) => {
     const v = r.l + r.f, pl = v ? r.l / v : 0, pf = v ? r.f / v : 0;
+    if (r.l > r.f) lula++; else if (r.f > r.l) flavio++;
     const t = v ? `Lula ${fmtP(pl)} · Flávio ${fmtP(pf)}` : 'sem votos apurados';
     return `<div class="uf${uf === sel ? ' sel' : ''}" data-uf="${uf}" title="${UF_NAMES[uf]} — ${t}">
       <b>${uf.toUpperCase()}</b>
       <span class="mini"><i style="width:${pl * 100}%;background:var(--lula)"></i><i style="width:${pf * 100}%;background:var(--flavio);margin-left:auto"></i></span>
       <small>${fmtP(r.p)}</small></div>`;
   }).join('');
+  $('handleS').innerHTML = `<span class="l">Lula ${lula}</span> × <span class="f">${flavio} Flávio</span>`;
 }
 const status = t => $('status').textContent = t;
-function progress(done, total){
-  $('prog').style.width = total ? (done / total * 100) + '%' : '0';
-  if (total) status(done < total ? `Baixando municípios… ${fmtN(done)}/${fmtN(total)}` : '');
-  $('handleS').textContent = total && done < total ? `${Math.round(done / total * 100)}% carregado` : '';
-}
 
+const ufSel = $('ufSel');
+[...UFS].sort((a, b) => UF_NAMES[a].localeCompare(UF_NAMES[b])).forEach(uf => ufSel.add(new Option(UF_NAMES[uf], uf)));
 function selectUf(uf){
-  $('ufSel').value = uf;
-  if (uf && ufBounds[uf]) map.fitBounds(ufBounds[uf], {padding: [20, 20]});
+  ufSel.value = uf;
+  if (uf) map.fitBounds(layers[uf].getBounds(), {padding: [20, 20]});
   else fitBrasil();
+  if (uf) showUf(uf); else hideUf();
   renderUfs();
   closeSheet();
 }
-$('ufSel').onchange = e => selectUf(e.target.value);
-$('ufs').onclick = e => { const el = e.target.closest('.uf'); if (el) selectUf(el.dataset.uf === $('ufSel').value ? '' : el.dataset.uf); };
-$('refresh').onclick = refresh;
-
-// Busca de cidade
-const byName = () => Object.fromEntries(Object.keys(byIbge).map(c => [cityName(c).toLowerCase(), c]));
-let nameIdx = null;
-$('busca').addEventListener('change', e => {
-  nameIdx ||= byName();
-  const c = nameIdx[e.target.value.trim().toLowerCase()];
-  if (!c) return;
-  e.target.blur(); closeSheet();
-  map.fitBounds(layers[c].getBounds(), {maxZoom: 9, padding: [40, 40]});
-  selected = selected || c;   // libera o cartão também no desktop
-  showCity(c);
-  e.target.value = '';
-});
+ufSel.onchange = e => selectUf(e.target.value);
+$('ufs').onclick = e => { const el = e.target.closest('.uf'); if (el) selectUf(el.dataset.uf === ufSel.value ? '' : el.dataset.uf); };
 
 // Painel deslizante (celular)
 const panel = $('panel'), handle = $('handle');
@@ -530,15 +415,7 @@ $('timer').onclick = () => { if (!loading) cycle(); };
 $('refresh').onclick = $('timer').onclick;
 document.addEventListener('visibilitychange', tick);
 
-(async () => {
-  loadCache();
-  for (const [c, r] of Object.entries(results)) layers[c]?.setStyle({fillColor: colorFor(r)});
-  for (;;) {
-    try { await loadConfig(); break; }
-    catch (e) { status('TSE indisponível no momento (' + e.message.split(' ')[0] + '), tentando de novo em 30s…'); await sleep(30000); }
-  }
-  cycle();
-})();
+cycle();
 </script>
 </body>
 </html>
