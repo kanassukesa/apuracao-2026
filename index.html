@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121316">
+<title>Apuração Presidente 2026</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e2e0da;
+  --lula:#c8202f; --flavio:#1f4fa8; --none:#d9d7d0; --map:#eceae4; --uf:#ffffff; --neutral:#f4f1ea;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121316; --panel:#1b1c20; --ink:#ececee; --muted:#9a9aa2; --line:#2c2d33;
+    --none:#3a3b41; --map:#16171a; --uf:#121316; --neutral:#2a2b30;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121316; --panel:#1b1c20; --ink:#ececee; --muted:#9a9aa2; --line:#2c2d33;
+  --none:#3a3b41; --map:#16171a; --uf:#121316; --neutral:#2a2b30;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+header{padding:14px 20px 12px;padding-top:max(14px,env(safe-area-inset-top));background:var(--panel);border-bottom:1px solid var(--line)}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-size:17px;margin:0;font-weight:650}
+.meta{color:var(--muted);font-size:12.5px;display:flex;align-items:center;gap:8px}
+.timer{display:inline-flex;align-items:center;gap:5px;min-height:0;padding:3px 9px 3px 5px;border-radius:999px;
+  font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink);background:var(--bg)}
+.timer svg{width:16px;height:16px;transform:rotate(-90deg)}
+.timer circle{fill:none;stroke-width:2.5}
+.timer .trk{stroke:var(--line)}
+.timer .arc{stroke:var(--ink);stroke-linecap:round;stroke-dasharray:50.27;stroke-dashoffset:0;transition:stroke-dashoffset 1s linear}
+.timer.busy svg{animation:spin 1s linear infinite}
+.timer.busy .arc{stroke-dashoffset:37.7;transition:none}
+@keyframes spin{to{transform:rotate(270deg)}}
+.race{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:12px;margin-top:10px}
+.cand .nm{font-weight:650;font-size:15px}
+.cand .pct{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05}
+.cand .vt{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.cand.l .pct{color:var(--lula)} .cand.f{text-align:right} .cand.f .pct{color:var(--flavio)}
+.apur{text-align:center;color:var(--muted);font-size:12.5px}
+.apur b{display:block;font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums}
+.bar{position:relative;display:flex;height:12px;border-radius:6px;overflow:hidden;margin-top:8px;background:var(--none)}
+.bar i{display:block;height:100%}
+.bar .bl{background:var(--lula)} .bar .bf{background:var(--flavio);margin-left:auto}
+.bar:after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.5}
+.short{display:none}
+
+main{flex:1;display:flex;min-height:0;position:relative}
+#map{flex:1;background:var(--map);min-height:0}
+aside{width:320px;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.handle{display:none}
+.ctrl{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.ctrl label{font-size:12px;color:var(--muted)}
+select,button,input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-height:36px}
+input{width:100%}
+button{cursor:pointer}
+.row{display:flex;gap:8px;align-items:center}
+.row select{flex:1;min-width:0}
+.legend{padding:10px 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.scale{display:flex;height:10px;border-radius:3px;overflow:hidden;margin:6px 0 3px}
+.scale i{flex:1}
+.scale-l{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--none);vertical-align:-1px;margin-right:4px}
+#ufs{overflow:auto;flex:1;overscroll-behavior:contain}
+.uf{display:grid;grid-template-columns:30px 1fr 54px;gap:8px;align-items:center;padding:7px 14px;cursor:pointer;font-variant-numeric:tabular-nums;font-size:12.5px}
+.uf:hover{background:var(--bg)}
+.uf.sel{background:var(--bg);box-shadow:inset 3px 0 0 var(--ink)}
+.uf .mini{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--none)}
+.uf .mini i{display:block}
+.uf small{color:var(--muted);text-align:right}
+.status{padding:8px 14px;padding-bottom:max(8px,env(safe-area-inset-bottom));font-size:12px;color:var(--muted);border-top:1px solid var(--line);overflow-wrap:anywhere}
+.prog{height:2px;background:var(--line);margin-top:6px;border-radius:1px;overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--ink);opacity:.6}
+
+#info{position:absolute;left:12px;bottom:28px;z-index:500;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 6px 20px rgba(0,0,0,.2);padding:10px 34px 10px 12px;font-size:13px;min-width:210px;max-width:calc(100% - 24px);display:none}
+#info.on{display:block}
+#info .x{position:absolute;right:4px;top:4px;border:0;background:none;min-height:0;padding:4px 8px;color:var(--muted);font-size:16px}
+#info .bar{height:8px;margin:6px 0 4px}
+.l{color:var(--lula);font-weight:650} .f{color:var(--flavio);font-weight:650} .m{color:var(--muted)}
+
+.leaflet-container{background:var(--map);font:inherit;outline:none}
+.leaflet-tooltip.tt{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:8px 10px;font-size:12.5px}
+.tt b{font-size:13.5px}
+
+/* ---------- celular ---------- */
+@media (max-width:760px){
+  header{padding:10px 14px 9px;padding-top:max(10px,env(safe-area-inset-top))}
+  h1{font-size:14px}
+  .meta{font-size:11px}
+  .race{margin-top:6px;gap:8px}
+  .cand .nm{font-size:13px}
+  .cand .pct{font-size:22px}
+  .cand .vt{font-size:11px}
+  .apur{font-size:11px} .apur b{font-size:16px}
+  .bar{height:9px;margin-top:6px}
+  .long{display:none} .short{display:inline}
+  .leaflet-control-zoom{display:none}
+  .leaflet-bottom{bottom:58px}
+
+  aside{position:absolute;left:0;right:0;bottom:0;width:auto;z-index:1100;border-left:0;border-top:1px solid var(--line);
+    border-radius:14px 14px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.25);max-height:72%;
+    transform:translateY(calc(100% - var(--peek)));transition:transform .25s ease;--peek:58px}
+  aside.open{transform:none}
+  .handle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px 10px;min-height:58px;cursor:pointer;
+    border:0;border-radius:14px 14px 0 0;background:none;width:100%;text-align:left}
+  .handle:before{content:"";position:absolute;left:50%;top:6px;width:36px;height:4px;border-radius:2px;background:var(--line);transform:translateX(-50%)}
+  .handle .t{font-weight:650;margin-top:6px}
+  .handle .s{font-size:12px;color:var(--muted);margin-top:6px;text-align:right}
+  .uf{padding:10px 14px}
+  #info{bottom:84px;left:10px;right:10px;max-width:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>Apuração 2026 · Presidente · 2º turno</h1>
+    <span class="meta"><span id="upd">Carregando…</span>
+      <button class="timer" id="timer" title="Atualizar agora">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" class="trk"/><circle cx="10" cy="10" r="8" class="arc" id="timerArc"/></svg>
+        <span id="timerTxt">–</span>
+      </button>
+    </span>
+  </div>
+  <div class="race">
+    <div class="cand l"><div class="nm">Lula<span class="long"> (PT)</span></div><div class="pct" id="pL">–</div><div class="vt" id="vL"></div></div>
+    <div class="apur"><b id="pA">–</b><span class="long">urnas </span>apuradas</div>
+    <div class="cand f"><div class="nm"><span class="long">Flávio Bolsonaro (PL)</span><span class="short">Flávio</span></div><div class="pct" id="pF">–</div><div class="vt" id="vF"></div></div>
+  </div>
+  <div class="bar"><i class="bl" id="bL" style="width:0"></i><i class="bf" id="bF" style="width:0"></i></div>
+</header>
+<main>
+  <div id="map"></div>
+  <div id="info"><button class="x" id="infoX" aria-label="Fechar">×</button><div id="infoBody"></div></div>
+  <aside id="panel">
+    <button class="handle" id="handle" aria-expanded="false"><span class="t">Estados e busca</span><span class="s" id="handleS"></span></button>
+    <div class="ctrl">
+      <label for="busca">Buscar cidade</label>
+      <input id="busca" list="cidades" placeholder="Ex.: Campinas – SP" autocomplete="off" enterkeyhint="search">
+      <datalist id="cidades"></datalist>
+      <label for="ufSel">Estado</label>
+      <div class="row">
+        <select id="ufSel"><option value="">Brasil inteiro</option></select>
+        <button id="refresh" title="Atualizar agora">Atualizar</button>
+      </div>
+    </div>
+    <div class="legend">
+      % dos votos válidos no município
+      <div class="scale" id="scale"></div>
+      <div class="scale-l"><span>Lula 70%+</span><span>50%</span><span>Flávio 70%+</span></div>
+      <div style="margin-top:6px"><span class="sw"></span>sem urnas apuradas</div>
+    </div>
+    <div id="ufs"></div>
+    <div class="status"><span id="status"></span><div class="prog"><i id="prog"></i></div></div>
+  </aside>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="geo.js"></script>
+<script>
+// Fonte: https://resultados.tse.jus.br (arquivos públicos de divulgação). Eleição 6258 = 2º turno federal 2026.
+const BASE = 'https://resultados.tse.jus.br/oficial/ele2026';
+const ELE = '6258';
+const E6 = 'e' + ELE.padStart(6, '0');
+const CARGO = 'c0001';
+const N_LULA = '13', N_FLAVIO = '22';
+const REFRESH_MS = 60_000;
+const CONCURRENCY = 6;
+const CACHE_KEY = 'apuracao-' + ELE;
+
+const UF_NAMES = {ac:'Acre',al:'Alagoas',am:'Amazonas',ap:'Amapá',ba:'Bahia',ce:'Ceará',df:'Distrito Federal',es:'Espírito Santo',go:'Goiás',ma:'Maranhão',mg:'Minas Gerais',ms:'Mato Grosso do Sul',mt:'Mato Grosso',pa:'Pará',pb:'Paraíba',pe:'Pernambuco',pi:'Piauí',pr:'Paraná',rj:'Rio de Janeiro',rn:'Rio Grande do Norte',ro:'Rondônia',rr:'Roraima',rs:'Rio Grande do Sul',sc:'Santa Catarina',se:'Sergipe',sp:'São Paulo',to:'Tocantins'};
+const IBGE_UF = {11:'ro',12:'ac',13:'am',14:'rr',15:'pa',16:'ap',17:'to',21:'ma',22:'pi',23:'ce',24:'rn',25:'pb',26:'pe',27:'al',28:'se',29:'ba',31:'mg',32:'es',33:'rj',35:'sp',41:'pr',42:'sc',43:'rs',50:'ms',51:'mt',52:'go',53:'df'};
+const UFS = Object.values(IBGE_UF);
+
+const $ = id => document.getElementById(id);
+const fmtN = n => n.toLocaleString('pt-BR');
+const fmtP = p => (p * 100).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '%';
+const num = s => +(s || 0);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const touch = matchMedia('(hover: none)').matches;
+
+// ---------- cores ----------
+const css = getComputedStyle(document.documentElement);
+const hex = v => css.getPropertyValue(v).trim();
+function mix(a, b, t){
+  const pa = [1,3,5].map(i => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1,3,5].map(i => parseInt(b.slice(i, i + 2), 16));
+  return 'rgb(' + pa.map((x, i) => Math.round(x + (pb[i] - x) * t)).join(',') + ')';
+}
+// Faixas: 50–55, 55–60, 60–70, 70+ para cada lado. Cores pré-calculadas.
+const STEPS = [0.05, 0.10, 0.20, 1];
+const TONES = [0.30, 0.52, 0.76, 1];
+const C_NONE = hex('--none');
+const C_L = TONES.map(t => mix(hex('--neutral'), hex('--lula'), t));
+const C_F = TONES.map(t => mix(hex('--neutral'), hex('--flavio'), t));
+function colorFor(r){
+  if (!r || r.l + r.f === 0) return C_NONE;
+  const p = r.l / (r.l + r.f);
+  const i = STEPS.findIndex(s => Math.abs(p - 0.5) <= s);
+  return (p >= 0.5 ? C_L : C_F)[i];
+}
+$('scale').innerHTML = [...C_L].reverse().map(c => `<i style="background:${c}"></i>`).join('')
+  + C_F.map(c => `<i style="background:${c}"></i>`).join('');
+
+// ---------- malha (geo.js: anéis com coordenadas inteiras em delta, escala GEO_Q) ----------
+function decode(packed){
+  return {type: 'FeatureCollection', features: packed.map(([c, polys]) => ({
+    type: 'Feature', properties: {c},
+    geometry: {type: 'MultiPolygon', coordinates: polys.map(p => p.map(ring => {
+      const out = []; let x = 0, y = 0;
+      for (let i = 0; i < ring.length; i += 2) { x += ring[i]; y += ring[i + 1]; out.push([x / GEO_Q, y / GEO_Q]); }
+      return out;
+    }))}
+  }))};
+}
+
+// ---------- mapa ----------
+const map = L.map('map', {preferCanvas: true, zoomSnap: 0.25, minZoom: 3, tap: false}).setView([-14, -52], 4);
+map.attributionControl.setPrefix('').addAttribution('Dados: TSE · Malha: IBGE');
+const renderer = L.canvas({padding: 0.3, tolerance: touch ? 3 : 0});
+
+const byIbge = {};   // ibge -> {tse, uf, nm}
+let results = {};    // ibge -> {l, f, p}  (votos Lula, votos Flávio, fração de seções apuradas)
+let stamps = {};     // chave -> carimbo da última versão baixada (uf, mun)
+const layers = {};   // ibge -> layer
+const centers = {};  // ibge -> LatLng
+let selected = null;
+
+const STYLE_BASE = {fillOpacity: 1, color: hex('--map'), weight: 0.3};
+const munLayer = L.geoJSON(decode(GEO_MUN), {
+  renderer,
+  style: () => ({...STYLE_BASE, fillColor: C_NONE}),
+  onEachFeature(f, layer){
+    const c = f.properties.c;
+    layers[c] = layer;
+    if (!touch) {
+      layer.bindTooltip(() => cityHtml(c), {sticky: true, className: 'tt', direction: 'top', offset: [0, -8]});
+      layer.on('mouseover', () => highlight(c, true));
+      layer.on('mouseout', () => c !== selected && highlight(c, false));
+    }
+    layer.on('click', () => showCity(c));
+  }
+}).addTo(map);
+const ufLayer = L.geoJSON(decode(GEO_UF), {
+  renderer, interactive: false, style: () => ({fill: false, color: hex('--uf'), weight: 1.4})
+}).addTo(map);
+const ufBounds = {};
+ufLayer.eachLayer(l => ufBounds[IBGE_UF[l.feature.properties.c]] = l.getBounds());
+for (const [c, l] of Object.entries(layers)) centers[c] = l.getBounds().getCenter();
+const fitBrasil = () => map.fitBounds(munLayer.getBounds(), {padding: [10, 10]});
+fitBrasil();
+
+function highlight(c, on){
+  const l = layers[c]; if (!l) return;
+  l.setStyle(on ? {weight: 2, color: hex('--ink')} : {weight: 0.3, color: hex('--map')});
+  if (on) l.bringToFront();
+}
+const cityName = c => byIbge[c] ? `${titleCase(byIbge[c].nm)} – ${byIbge[c].uf.toUpperCase()}` : c;
+function cityHtml(c){
+  const r = results[c];
+  if (!r || r.l + r.f === 0) return `<b>${cityName(c)}</b><br><span class="m">Nenhuma urna apurada ainda</span>`;
+  const v = r.l + r.f;
+  return `<b>${cityName(c)}</b>
+    ${touch ? `<div class="bar"><i class="bl" style="width:${r.l / v * 100}%"></i><i class="bf" style="width:${r.f / v * 100}%"></i></div>` : '<br>'}
+    <span class="l">Lula ${fmtP(r.l / v)}</span> <span class="m">(${fmtN(r.l)})</span><br>
+    <span class="f">Flávio ${fmtP(r.f / v)}</span> <span class="m">(${fmtN(r.f)})</span><br>
+    <span class="m">${fmtP(r.p)} das urnas apuradas</span>`;
+}
+function showCity(c){
+  if (!touch && !selected) return;   // no desktop o tooltip já mostra; o cartão é só para busca
+  if (selected) highlight(selected, false);
+  selected = c; highlight(c, true);
+  $('infoBody').innerHTML = cityHtml(c);
+  $('info').classList.add('on');
+}
+function hideCity(){
+  if (selected) highlight(selected, false);
+  selected = null; $('info').classList.remove('on');
+}
+$('infoX').onclick = hideCity;
+const titleCase = s => s.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase())
+  .replace(/\b(D[aeo]s?|E)\b/g, w => w.toLowerCase());
+
+// ---------- TSE: ritmo adaptativo (desacelera ao receber 429) ----------
+let gap = 40, nextAt = 0;   // ms entre requisições
+async function slot(){
+  const now = performance.now();
+  const wait = Math.max(0, nextAt - now);
+  nextAt = Math.max(now, nextAt) + gap;
+  if (wait) await sleep(wait);
+}
+async function getJSON(url){
+  for (let tentativa = 1; ; tentativa++) {
+    await slot();
+    const r = await fetch(url);
+    if (r.ok) { gap = Math.max(30, gap * 0.97); return r.json(); }
+    if (r.status !== 429 || tentativa >= 5) throw new Error(r.status + ' ' + url);
+    gap = Math.min(2000, gap * 2);
+    await sleep(1500 * tentativa);
+  }
+}
+function parseResult(j){
+  let l = 0, f = 0;
+  for (const ag of j.carg?.[0]?.agr || []) for (const p of ag.par || []) for (const c of p.cand || []) {
+    if (c.n === N_LULA) l = num(c.vap);
+    if (c.n === N_FLAVIO) f = num(c.vap);
+  }
+  const s = j.s || {};
+  return {l, f, p: num(s.st) / Math.max(1, num(s.ts)), hg: j.hg, dg: j.dg};
+}
+async function pool(items, fn){
+  let i = 0;
+  await Promise.all(Array.from({length: CONCURRENCY}, async () => {
+    while (i < items.length) { const it = items[i++]; try { await fn(it); } catch (e) { console.warn(e.message); } }
+  }));
+}
+
+// ---------- cache local (só acelera a reabertura; os dados sempre vêm do TSE) ----------
+function loadCache(){
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (c) { results = c.results || {}; stamps = c.stamps || {}; }
+  } catch { results = {}; stamps = {}; }
+}
+function saveCache(){
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({results, stamps})); } catch {}
+}
+
+const ufResults = {};
+let loading = false, timer = null;
+
+async function loadConfig(){
+  const cfg = await getJSON(`${BASE}/${ELE}/config/mun-${E6}-cm.json`);
+  const opts = [];
+  for (const a of cfg.abr) for (const m of a.mu) if (m.cdi) {
+    byIbge[m.cdi] = {tse: m.cd, uf: a.cd, nm: m.nm};
+    opts.push(cityName(m.cdi));
+  }
+  $('cidades').innerHTML = opts.sort((a, b) => a.localeCompare(b)).map(o => `<option value="${o}">`).join('');
+  const sel = $('ufSel');
+  [...UFS].sort((a, b) => UF_NAMES[a].localeCompare(UF_NAMES[b])).forEach(uf => sel.add(new Option(UF_NAMES[uf], uf)));
+}
+
+async function refresh(){
+  if (loading) return;
+  loading = true; $('refresh').disabled = true;
+  try {
+    const [brTot, brAb] = await Promise.all([
+      getJSON(`${BASE}/${ELE}/dados/br/br-${CARGO}-${E6}-u.json`),
+      getJSON(`${BASE}/${ELE}/dados/br/br-${E6}-ab.json`)
+    ]);
+    renderTotals(parseResult(brTot));
+
+    // Só baixa os estados cujo carimbo mudou desde a última vez.
+    const ufStamp = {};
+    for (const a of brAb.abr || []) if (a.tpabr === 'uf') ufStamp[a.cdabr] = a.dt + a.ht + a.s?.st;
+    const ufsTodo = UFS.filter(uf => !ufResults[uf] || stamps['uf:' + uf] !== ufStamp[uf]);
+
+    const tse2ibge = {};
+    for (const [c, m] of Object.entries(byIbge)) tse2ibge[m.uf + m.tse] = c;
+    const todo = [], newUfStamps = {}, failedUfs = new Set();
+    await pool(ufsTodo, async uf => {
+      const changed = stamps['uf:' + uf] !== ufStamp[uf];
+      const [tot, ab] = await Promise.all([
+        getJSON(`${BASE}/${ELE}/dados/${uf}/${uf}-${CARGO}-${E6}-u.json`),
+        changed ? getJSON(`${BASE}/${ELE}/dados/${uf}/${uf}-${E6}-ab.json`) : null
+      ]);
+      ufResults[uf] = parseResult(tot);
+      if (!ab) return;
+      for (const a of ab.abr || []) {
+        if (a.tpabr !== 'mun' || num(a.s?.st) === 0) continue;
+        const ibge = tse2ibge[uf + a.cdabr];
+        const stamp = a.dt + a.ht + a.s.st;
+        if (ibge && stamps[ibge] !== stamp) todo.push({uf, tse: a.cdabr, ibge, stamp, te: num(a.e?.te)});
+      }
+      newUfStamps[uf] = ufStamp[uf];
+    });
+    renderUfs();
+
+    // Prioridade: estado escolhido > o que está na tela > cidades com mais eleitores.
+    const view = map.getBounds(), selUf = $('ufSel').value;
+    const score = t => (t.uf === selUf ? 2e9 : 0) + (view.contains(centers[t.ibge]) ? 1e9 : 0) + t.te;
+    todo.sort((a, b) => score(b) - score(a));
+
+    let done = 0;
+    progress(0, todo.length);
+    await pool(todo, async t => {
+      let r;
+      try { r = parseResult(await getJSON(`${BASE}/${ELE}/dados/${t.uf}/${t.uf}${t.tse}-${CARGO}-${E6}-u.json`)); }
+      catch (e) { failedUfs.add(t.uf); throw e; }
+      results[t.ibge] = {l: r.l, f: r.f, p: r.p};
+      stamps[t.ibge] = t.stamp;
+      layers[t.ibge]?.setStyle({fillColor: colorFor(results[t.ibge])});
+      if (t.ibge === selected) $('infoBody').innerHTML = cityHtml(t.ibge);
+      progress(++done, todo.length);
+      if (done % 300 === 0) saveCache();
+    });
+    // Estado com cidade que falhou fica sem carimbo novo, para ser revisto no próximo ciclo.
+    for (const [uf, s] of Object.entries(newUfStamps)) if (!failedUfs.has(uf)) stamps['uf:' + uf] = s;
+    saveCache();
+    const n = Object.values(results).filter(r => r.l + r.f > 0).length;
+    status(`${fmtN(n)} de ${fmtN(Object.keys(byIbge).length)} municípios com votos · atualiza a cada ${REFRESH_MS / 1000}s`);
+  } catch (e) {
+    console.error(e);
+    status('Erro ao falar com o TSE (' + e.message.split(' ')[0] + '), tentando de novo no próximo ciclo');
+  } finally {
+    loading = false; $('refresh').disabled = false;
+  }
+}
+
+function renderTotals(r){
+  const v = r.l + r.f;
+  const pl = v ? r.l / v : 0, pf = v ? r.f / v : 0;
+  $('pL').textContent = v ? fmtP(pl) : '–';
+  $('pF').textContent = v ? fmtP(pf) : '–';
+  $('vL').textContent = fmtN(r.l) + ' votos';
+  $('vF').textContent = fmtN(r.f) + ' votos';
+  $('pA').textContent = fmtP(r.p);
+  $('bL').style.width = (pl * 100) + '%';
+  $('bF').style.width = (pf * 100) + '%';
+  $('upd').textContent = `TSE · ${r.dg} ${r.hg}`;
+}
+
+function renderUfs(){
+  const sel = $('ufSel').value;
+  const rows = Object.entries(ufResults).sort((a, b) => UF_NAMES[a[0]].localeCompare(UF_NAMES[b[0]]));
+  $('ufs').innerHTML = rows.map(([uf, r]) => {
+    const v = r.l + r.f, pl = v ? r.l / v : 0, pf = v ? r.f / v : 0;
+    const t = v ? `Lula ${fmtP(pl)} · Flávio ${fmtP(pf)}` : 'sem votos apurados';
+    return `<div class="uf${uf === sel ? ' sel' : ''}" data-uf="${uf}" title="${UF_NAMES[uf]} — ${t}">
+      <b>${uf.toUpperCase()}</b>
+      <span class="mini"><i style="width:${pl * 100}%;background:var(--lula)"></i><i style="width:${pf * 100}%;background:var(--flavio);margin-left:auto"></i></span>
+      <small>${fmtP(r.p)}</small></div>`;
+  }).join('');
+}
+const status = t => $('status').textContent = t;
+function progress(done, total){
+  $('prog').style.width = total ? (done / total * 100) + '%' : '0';
+  if (total) status(done < total ? `Baixando municípios… ${fmtN(done)}/${fmtN(total)}` : '');
+  $('handleS').textContent = total && done < total ? `${Math.round(done / total * 100)}% carregado` : '';
+}
+
+function selectUf(uf){
+  $('ufSel').value = uf;
+  if (uf && ufBounds[uf]) map.fitBounds(ufBounds[uf], {padding: [20, 20]});
+  else fitBrasil();
+  renderUfs();
+  closeSheet();
+}
+$('ufSel').onchange = e => selectUf(e.target.value);
+$('ufs').onclick = e => { const el = e.target.closest('.uf'); if (el) selectUf(el.dataset.uf === $('ufSel').value ? '' : el.dataset.uf); };
+$('refresh').onclick = refresh;
+
+// Busca de cidade
+const byName = () => Object.fromEntries(Object.keys(byIbge).map(c => [cityName(c).toLowerCase(), c]));
+let nameIdx = null;
+$('busca').addEventListener('change', e => {
+  nameIdx ||= byName();
+  const c = nameIdx[e.target.value.trim().toLowerCase()];
+  if (!c) return;
+  e.target.blur(); closeSheet();
+  map.fitBounds(layers[c].getBounds(), {maxZoom: 9, padding: [40, 40]});
+  selected = selected || c;   // libera o cartão também no desktop
+  showCity(c);
+  e.target.value = '';
+});
+
+// Painel deslizante (celular)
+const panel = $('panel'), handle = $('handle');
+function closeSheet(){ panel.classList.remove('open'); handle.setAttribute('aria-expanded', 'false'); }
+handle.onclick = () => { const o = panel.classList.toggle('open'); handle.setAttribute('aria-expanded', o); };
+map.on('movestart', closeSheet);
+
+// Cronômetro: conta até a próxima atualização; pausa com a aba/app em segundo plano (economiza dados no celular).
+let refreshAt = 0;
+async function cycle(){
+  clearTimeout(timer);
+  $('timer').classList.add('busy');
+  $('timerTxt').textContent = 'atualizando…';
+  await refresh();
+  $('timer').classList.remove('busy');
+  refreshAt = Date.now() + REFRESH_MS;
+  tick();
+}
+function tick(){
+  clearTimeout(timer);
+  if (document.hidden) { $('timerTxt').textContent = 'pausado'; return; }
+  const left = Math.max(0, refreshAt - Date.now());
+  if (left === 0) return cycle();
+  const s = Math.ceil(left / 1000);
+  $('timerTxt').textContent = `atualiza em ${s}s`;
+  $('timerArc').style.strokeDashoffset = 50.27 * (1 - (s - 1) / (REFRESH_MS / 1000));
+  timer = setTimeout(tick, left - (s - 1) * 1000);
+}
+$('timer').onclick = () => { if (!loading) cycle(); };
+$('refresh').onclick = $('timer').onclick;
+document.addEventListener('visibilitychange', tick);
+
+(async () => {
+  loadCache();
+  for (const [c, r] of Object.entries(results)) layers[c]?.setStyle({fillColor: colorFor(r)});
+  for (;;) {
+    try { await loadConfig(); break; }
+    catch (e) { status('TSE indisponível no momento (' + e.message.split(' ')[0] + '), tentando de novo em 30s…'); await sleep(30000); }
+  }
+  cycle();
+})();
+</script>
+</body>
+</html>
